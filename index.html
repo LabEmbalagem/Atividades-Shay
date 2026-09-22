@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestor de Rotinas e Prioridades</title>
+  <!-- Tailwind CSS para Estilização -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Ícones Lucide -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen pb-12">
+
+  <!-- Cabeçalho -->
+  <header class="bg-slate-900 text-white p-4 shadow-md">
+    <div class="max-w-6xl mx-auto flex justify-between items-center">
+      <div>
+        <h1 class="text-xl font-bold flex items-center gap-2">
+          <i data-lucide="check-square" class="text-blue-400"></i> Gestor de Rotinas
+        </h1>
+        <p class="text-xs text-slate-400">Painel de Controlo e Matriz de Prioridades</p>
+      </div>
+      <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition">
+        <i data-lucide="plus"></i> Nova Demanda
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto p-4 space-y-6">
+
+    <!-- Alertas de Urgência Atrasados -->
+    <div id="urgentAlertBox" class="hidden bg-red-500 text-white p-4 rounded-xl shadow-lg flex items-center justify-between animate-pulse">
+      <div class="flex items-center gap-3">
+        <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+        <div>
+          <h3 class="font-bold">Atenção! Demandas Urgentes Atrasadas</h3>
+          <p class="text-xs text-red-100" id="urgentAlertText">Existem tarefas críticas que precisam da sua atenção imediata.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Indicadores / Cards de Resumo -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <span class="text-xs font-semibold text-slate-500 uppercase">Total Ativas</span>
+        <div class="text-2xl font-bold text-slate-800 mt-1" id="kpiTotal">0</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <span class="text-xs font-semibold text-red-500 uppercase">Atrasadas</span>
+        <div class="text-2xl font-bold text-red-600 mt-1" id="kpiAtrasadas">0</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <span class="text-xs font-semibold text-amber-500 uppercase">Tempo Parado</span>
+        <div class="text-2xl font-bold text-amber-600 mt-1" id="kpiTempoParado">0h 0m</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <span class="text-xs font-semibold text-red-600 uppercase">Alertas Críticos</span>
+        <div class="text-2xl font-bold text-red-700 mt-1" id="kpiAlertas">0</div>
+      </div>
+    </section>
+
+    <!-- Matriz de Prioridades (Eisenhower) -->
+    <section>
+      <h2 class="text-lg font-bold mb-3 text-slate-700 flex items-center gap-2">
+        <i data-lucide="grid"></i> Matriz de Prioridades
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        
+        <!-- Fazer Agora -->
+        <div class="bg-red-50 border-t-4 border-red-500 p-4 rounded-lg shadow-sm">
+          <h3 class="font-bold text-red-700 flex items-center justify-between mb-3">
+            Fazer Agora <span class="text-xs font-normal text-red-600">(Urgente e Importante)</span>
+          </h3>
+          <div id="quad-fazer-agora" class="space-y-3 min-h-[100px]"></div>
+        </div>
+
+        <!-- Agendar -->
+        <div class="bg-amber-50 border-t-4 border-amber-500 p-4 rounded-lg shadow-sm">
+          <h3 class="font-bold text-amber-700 flex items-center justify-between mb-3">
+            Agendar <span class="text-xs font-normal text-amber-600">(Importante, não Urgente)</span>
+          </h3>
+          <div id="quad-agendar" class="space-y-3 min-h-[100px]"></div>
+        </div>
+
+        <!-- Delegar -->
+        <div class="bg-emerald-50 border-t-4 border-emerald-500 p-4 rounded-lg shadow-sm">
+          <h3 class="font-bold text-emerald-700 flex items-center justify-between mb-3">
+            Delegar <span class="text-xs font-normal text-emerald-600">(Urgente, não Importante)</span>
+          </h3>
+          <div id="quad-delegar" class="space-y-3 min-h-[100px]"></div>
+        </div>
+
+        <!-- Eliminar -->
+        <div class="bg-slate-200 border-t-4 border-slate-400 p-4 rounded-lg shadow-sm">
+          <h3 class="font-bold text-slate-700 flex items-center justify-between mb-3">
+            Eliminar / Rever <span class="text-xs font-normal text-slate-500">(Não Urgente, Não Importante)</span>
+          </h3>
+          <div id="quad-eliminar" class="space-y-3 min-h-[100px]"></div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal para Criar/Editar Tarefa -->
+  <div id="modalTask" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+      <h3 class="text-lg font-bold text-slate-800" id="modalTitle">Nova Demanda</h3>
+      
+      <form id="taskForm" onsubmit="saveTask(event)" class="space-y-3">
+        <input type="hidden" id="taskId">
+        
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Nome da Demanda</label>
+          <input type="text" id="taskTitle" required class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Prioridade</label>
+            <select id="taskPriority" class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+              <option value="fazer-agora">Fazer Agora</option>
+              <option value="agendar">Agendar</option>
+              <option value="delegar">Delegar</option>
+              <option value="eliminar">Eliminar</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Data Limite</label>
+            <input type="date" id="taskDueDate" required class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Status</label>
+          <select id="taskStatus" class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <option value="A Fazer">A Fazer</option>
+            <option value="Pausado">Pausado (Conta Tempo Parado)</option>
+            <option value="Concluído">Concluído</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Motivo do Atraso / Pausa</label>
+          <textarea id="taskReason" rows="2" placeholder="Ex: Aguardando resposta do fornecedor..." class="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-3">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 text-sm border rounded-lg text-slate-600 hover:bg-slate-50">Cancelar</button>
+          <button type="submit" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // Estado do App
+    let tasks = JSON.parse(localStorage.getItem('app_tasks')) || [];
+
+    function saveToStorage() {
+      localStorage.setItem('app_tasks', JSON.stringify(tasks));
+      render();
+    }
+
+    function openModal(id = null) {
+      const modal = document.getElementById('modalTask');
+      modal.classList.remove('hidden');
+
+      if (id) {
+        const task = tasks.find(t => t.id === id);
+        document.getElementById('taskId').value = task.id;
+        document.getElementById('taskTitle').value = task.title;
+        document.getElementById('taskPriority').value = task.priority;
+        document.getElementById('taskDueDate').value = task.dueDate;
+        document.getElementById('taskStatus').value = task.status;
+        document.getElementById('taskReason').value = task.reason || '';
+        document.getElementById('modalTitle').innerText = 'Editar Demanda';
+      } else {
+        document.getElementById('taskForm').reset();
+        document.getElementById('taskId').value = '';
+        document.getElementById('modalTitle').innerText = 'Nova Demanda';
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modalTask').classList.add('hidden');
+    }
+
+    function saveTask(e) {
+      e.preventDefault();
+      const id = document.getElementById('taskId').value;
+      const title = document.getElementById('taskTitle').value;
+      const priority = document.getElementById('taskPriority').value;
+      const dueDate = document.getElementById('taskDueDate').value;
+      const status = document.getElementById('taskStatus').value;
+      const reason = document.getElementById('taskReason').value;
+
+      const now = new Date().toISOString();
+
+      if (id) {
+        const task = tasks.find(t => t.id === id);
+        if (task.status !== 'Pausado' && status === 'Pausado') {
+          task.pausedAt = now;
+        } else if (task.status === 'Pausado' && status !== 'Pausado' && task.pausedAt) {
+          const diff = Math.floor((new Date() - new Date(task.pausedAt)) / (1000 * 60));
+          task.stoppedMinutes = (task.stoppedMinutes || 0) + diff;
+          task.pausedAt = null;
+        }
+        task.title = title;
+        task.priority = priority;
+        task.dueDate = dueDate;
+        task.status = status;
+        task.reason = reason;
+      } else {
+        tasks.push({
+          id: Date.now().toString(),
+          createdAt: now,
+          title,
+          priority,
+          dueDate,
+          status,
+          reason,
+          stoppedMinutes: 0,
+          pausedAt: status === 'Pausado' ? now : null
+        });
+      }
+
+      closeModal();
+      saveToStorage();
+    }
+
+    function deleteTask(id) {
+      if (confirm('Deseja eliminar esta tarefa?')) {
+        tasks = tasks.filter(t => t.id !== id);
+        saveToStorage();
+      }
+    }
+
+    function render() {
+      const today = new Date().toISOString().split('T')[0];
+
+      // Limpar Quadrantes
+      ['fazer-agora', 'agendar', 'delegar', 'eliminar'].forEach(q => {
+        document.getElementById(`quad-${q}`).innerHTML = '';
+      });
+
+      let totalAtivas = 0;
+      let atrasadasCount = 0;
+      let totalStoppedMinutes = 0;
+      let alertasCriticos = 0;
+
+      tasks.forEach(task => {
+        if (task.status !== 'Concluído') totalAtivas++;
+
+        // Calcular tempo parado acumulado
+        let currentStopped = task.stoppedMinutes || 0;
+        if (task.status === 'Pausado' && task.pausedAt) {
+          currentStopped += Math.floor((new Date() - new Date(task.pausedAt)) / (1000 * 60));
+        }
+        totalStoppedMinutes += currentStopped;
+
+        const isAtrasada = task.status !== 'Concluído' && task.dueDate < today;
+        if (isAtrasada) atrasadasCount++;
+
+        const isCritica = isAtrasada && task.priority === 'fazer-agora';
+        if (isCritica) alertasCriticos++;
+
+        // Criar Card
+        const card = document.createElement('div');
+        card.className = `bg-white p-3 rounded-lg shadow-sm border border-slate-200 relative text-sm space-y-2`;
+
+        card.innerHTML = `
+          <div class="flex justify-between items-start">
+            <h4 class="font-semibold text-slate-800 ${task.status === 'Concluído' ? 'line-through text-slate-400' : ''}">${task.title}</h4>
+            <div class="flex gap-1">
+              <button onclick="openModal('${task.id}')" class="text-slate-400 hover:text-blue-600"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+              <button onclick="deleteTask('${task.id}')" class="text-slate-400 hover:text-red-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-2 text-xs">
+            <span class="px-2 py-0.5 rounded ${isAtrasada ? 'bg-red-100 text-red-700 font-bold' : 'bg-slate-100 text-slate-600'}">
+              Prazo: ${task.dueDate} ${isAtrasada ? '(ATRASADA)' : ''}
+            </span>
+            <span class="px-2 py-0.5 rounded bg-blue-50 text-blue-600">${task.status}</span>
+          </div>
+
+          ${currentStopped > 0 ? `<div class="text-xs text-amber-600 font-medium">⏱️ Tempo Parado: ${Math.floor(currentStopped / 60)}h${currentStopped % 60}m</div>` : ''}
+          ${task.reason ? `<div class="text-xs bg-slate-50 p-2 rounded text-slate-600 border-l-2 border-slate-300"><strong>Motivo:</strong> ${task.reason}</div>` : ''}
+        `;
+
+        const container = document.getElementById(`quad-${task.priority}`);
+        if (container) container.appendChild(card);
+      });
+
+      // Atualizar KPIs
+      document.getElementById('kpiTotal').innerText = totalAtivas;
+      document.getElementById('kpiAtrasadas').innerText = atrasadasCount;
+      document.getElementById('kpiTempoParado').innerText = `${Math.floor(totalStoppedMinutes / 60)}h ${totalStoppedMinutes % 60}m`;
+      document.getElementById('kpiAlertas').innerText = alertasCriticos;
+
+      // Alertas Críticos
+      const alertBox = document.getElementById('urgentAlertBox');
+      if (alertasCriticos > 0) {
+        alertBox.classList.remove('hidden');
+        document.getElementById('urgentAlertText').innerText = `Existem ${alertasCriticos} demanda(s) de prioridade "Fazer Agora" que estão atrasadas!`;
+      } else {
+        alertBox.classList.add('hidden');
+      }
+
+      lucide.createIcons();
+    }
+
+    // Inicialização
+    render();
+  </script>
+</body>
+</html>
