@@ -4,10 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Gestor de Rotinas e Prioridades</title>
-  <!-- Tailwind CSS para Estilização -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Ícones Lucide -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans min-h-screen pb-12">
 
@@ -18,7 +21,7 @@
         <h1 class="text-xl font-bold flex items-center gap-2">
           <i data-lucide="check-square" class="text-blue-400"></i> Gestor de Rotinas
         </h1>
-        <p class="text-xs text-slate-400">Painel de Controlo e Matriz de Prioridades</p>
+        <p class="text-xs text-slate-400">Painel de Controlo e Matriz de Prioridades (Sincronizado)</p>
       </div>
       <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition">
         <i data-lucide="plus"></i> Nova Demanda
@@ -155,13 +158,32 @@
   </div>
 
   <script>
-    // Estado do App
-    let tasks = JSON.parse(localStorage.getItem('app_tasks')) || [];
+    // Configuração do Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyDummyKeyReplaceMeIfRequired",
+      authDomain: "rotinas-app.firebaseapp.com",
+      projectId: "rotinas-app-demo",
+      storageBucket: "rotinas-app.appspot.com",
+      messagingSenderId: "123456789",
+      appId: "1:123456789:web:abcdef"
+    };
 
-    function saveToStorage() {
-      localStorage.setItem('app_tasks', JSON.stringify(tasks));
-      render();
+    // Inicializar Firebase
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
     }
+    const db = firebase.firestore();
+
+    let tasks = [];
+
+    // Escutar alterações na nuvem em tempo real
+    db.collection("tarefas").onSnapshot((snapshot) => {
+      tasks = [];
+      snapshot.forEach((doc) => {
+        tasks.push({ id: doc.id, ...doc.data() });
+      });
+      render();
+    });
 
     function openModal(id = null) {
       const modal = document.getElementById('modalTask');
@@ -187,7 +209,7 @@
       document.getElementById('modalTask').classList.add('hidden');
     }
 
-    function saveTask(e) {
+    async function saveTask(e) {
       e.preventDefault();
       const id = document.getElementById('taskId').value;
       const title = document.getElementById('taskTitle').value;
@@ -200,21 +222,22 @@
 
       if (id) {
         const task = tasks.find(t => t.id === id);
+        let stoppedMinutes = task.stoppedMinutes || 0;
+        let pausedAt = task.pausedAt || null;
+
         if (task.status !== 'Pausado' && status === 'Pausado') {
-          task.pausedAt = now;
+          pausedAt = now;
         } else if (task.status === 'Pausado' && status !== 'Pausado' && task.pausedAt) {
           const diff = Math.floor((new Date() - new Date(task.pausedAt)) / (1000 * 60));
-          task.stoppedMinutes = (task.stoppedMinutes || 0) + diff;
-          task.pausedAt = null;
+          stoppedMinutes += diff;
+          pausedAt = null;
         }
-        task.title = title;
-        task.priority = priority;
-        task.dueDate = dueDate;
-        task.status = status;
-        task.reason = reason;
+
+        await db.collection("tarefas").doc(id).update({
+          title, priority, dueDate, status, reason, stoppedMinutes, pausedAt
+        });
       } else {
-        tasks.push({
-          id: Date.now().toString(),
+        await db.collection("tarefas").add({
           createdAt: now,
           title,
           priority,
@@ -227,20 +250,17 @@
       }
 
       closeModal();
-      saveToStorage();
     }
 
-    function deleteTask(id) {
+    async function deleteTask(id) {
       if (confirm('Deseja eliminar esta tarefa?')) {
-        tasks = tasks.filter(t => t.id !== id);
-        saveToStorage();
+        await db.collection("tarefas").doc(id).delete();
       }
     }
 
     function render() {
       const today = new Date().toISOString().split('T')[0];
 
-      // Limpar Quadrantes
       ['fazer-agora', 'agendar', 'delegar', 'eliminar'].forEach(q => {
         document.getElementById(`quad-${q}`).innerHTML = '';
       });
@@ -253,7 +273,6 @@
       tasks.forEach(task => {
         if (task.status !== 'Concluído') totalAtivas++;
 
-        // Calcular tempo parado acumulado
         let currentStopped = task.stoppedMinutes || 0;
         if (task.status === 'Pausado' && task.pausedAt) {
           currentStopped += Math.floor((new Date() - new Date(task.pausedAt)) / (1000 * 60));
@@ -266,7 +285,6 @@
         const isCritica = isAtrasada && task.priority === 'fazer-agora';
         if (isCritica) alertasCriticos++;
 
-        // Criar Card
         const card = document.createElement('div');
         card.className = `bg-white p-3 rounded-lg shadow-sm border border-slate-200 relative text-sm space-y-2`;
 
@@ -294,13 +312,11 @@
         if (container) container.appendChild(card);
       });
 
-      // Atualizar KPIs
       document.getElementById('kpiTotal').innerText = totalAtivas;
       document.getElementById('kpiAtrasadas').innerText = atrasadasCount;
       document.getElementById('kpiTempoParado').innerText = `${Math.floor(totalStoppedMinutes / 60)}h ${totalStoppedMinutes % 60}m`;
       document.getElementById('kpiAlertas').innerText = alertasCriticos;
 
-      // Alertas Críticos
       const alertBox = document.getElementById('urgentAlertBox');
       if (alertasCriticos > 0) {
         alertBox.classList.remove('hidden');
@@ -311,9 +327,6 @@
 
       lucide.createIcons();
     }
-
-    // Inicialização
-    render();
   </script>
 </body>
 </html>
