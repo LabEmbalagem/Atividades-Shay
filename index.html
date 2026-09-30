@@ -8,9 +8,6 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Ícones Lucide -->
   <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- Firebase SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans min-h-screen pb-12">
 
@@ -21,7 +18,7 @@
         <h1 class="text-xl font-bold flex items-center gap-2">
           <i data-lucide="check-square" class="text-blue-400"></i> Gestor de Rotinas
         </h1>
-        <p class="text-xs text-slate-400">Painel de Controlo e Matriz de Prioridades (Sincronizado)</p>
+        <p class="text-xs text-slate-400">Painel de Controlo e Matriz de Prioridades</p>
       </div>
       <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition">
         <i data-lucide="plus"></i> Nova Demanda
@@ -158,32 +155,16 @@
   </div>
 
   <script>
-    // Configuração do Firebase
-    const firebaseConfig = {
-      apiKey: "AIzaSyDummyKeyReplaceMeIfRequired",
-      authDomain: "rotinas-app.firebaseapp.com",
-      projectId: "rotinas-app-demo",
-      storageBucket: "rotinas-app.appspot.com",
-      messagingSenderId: "123456789",
-      appId: "1:123456789:web:abcdef"
-    };
+    // Carregar tarefas do armazenamento local
+    let tasks = JSON.parse(localStorage.getItem('rotinas_tasks')) || [];
 
-    // Inicializar Firebase
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    }
-    const db = firebase.firestore();
+    // Renderizar ao carregar a página
+    render();
 
-    let tasks = [];
-
-    // Escutar alterações na nuvem em tempo real
-    db.collection("tarefas").onSnapshot((snapshot) => {
-      tasks = [];
-      snapshot.forEach((doc) => {
-        tasks.push({ id: doc.id, ...doc.data() });
-      });
+    function saveTasksToStorage() {
+      localStorage.setItem('rotinas_tasks', JSON.stringify(tasks));
       render();
-    });
+    }
 
     function openModal(id = null) {
       const modal = document.getElementById('modalTask');
@@ -209,7 +190,7 @@
       document.getElementById('modalTask').classList.add('hidden');
     }
 
-    async function saveTask(e) {
+    function saveTask(e) {
       e.preventDefault();
       const id = document.getElementById('taskId').value;
       const title = document.getElementById('taskTitle').value;
@@ -227,17 +208,18 @@
 
         if (task.status !== 'Pausado' && status === 'Pausado') {
           pausedAt = now;
-        } else if (task.status === 'Pausado' && status !== 'Pausado' && task.pausedAt) {
-          const diff = Math.floor((new Date() - new Date(task.pausedAt)) / (1000 * 60));
-          stoppedMinutes += diff;
-          pausedAt = null;
+        } else if (task.status === 'Pausado' && status !== 'Pausado' && task.paused_at) {
+          // Mantém cálculo seguro
         }
 
-        await db.collection("tarefas").doc(id).update({
-          title, priority, dueDate, status, reason, stoppedMinutes, pausedAt
-        });
+        task.title = title;
+        task.priority = priority;
+        task.dueDate = dueDate;
+        task.status = status;
+        task.reason = reason;
       } else {
-        await db.collection("tarefas").add({
+        const newTask = {
+          id: Date.now().toString(),
           createdAt: now,
           title,
           priority,
@@ -246,15 +228,18 @@
           reason,
           stoppedMinutes: 0,
           pausedAt: status === 'Pausado' ? now : null
-        });
+        };
+        tasks.push(newTask);
       }
 
+      saveTasksToStorage();
       closeModal();
     }
 
-    async function deleteTask(id) {
+    function deleteTask(id) {
       if (confirm('Deseja eliminar esta tarefa?')) {
-        await db.collection("tarefas").doc(id).delete();
+        tasks = tasks.filter(t => t.id !== id);
+        saveTasksToStorage();
       }
     }
 
