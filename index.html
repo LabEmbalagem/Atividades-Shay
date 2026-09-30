@@ -13,16 +13,29 @@
 
   <!-- Cabeçalho -->
   <header class="bg-slate-900 text-white p-4 shadow-md">
-    <div class="max-w-6xl mx-auto flex justify-between items-center">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-3">
       <div>
         <h1 class="text-xl font-bold flex items-center gap-2">
           <i data-lucide="check-square" class="text-blue-400"></i> Gestor de Rotinas
         </h1>
         <p class="text-xs text-slate-400">Painel de Controlo e Matriz de Prioridades</p>
       </div>
-      <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition">
-        <i data-lucide="plus"></i> Nova Demanda
-      </button>
+      
+      <!-- Ações do Topo -->
+      <div class="flex flex-wrap gap-2 items-center">
+        <button onclick="exportData()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 transition" title="Guardar cópia de segurança no seu dispositivo">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i> Exportar Backup
+        </button>
+        
+        <label class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 cursor-pointer transition" title="Restaurar dados de um ficheiro de backup">
+          <i data-lucide="upload" class="w-3.5 h-3.5"></i> Importar Backup
+          <input type="file" id="importFile" accept=".json" onchange="importData(event)" class="hidden">
+        </label>
+
+        <button onclick="openModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition">
+          <i data-lucide="plus"></i> Nova Demanda
+        </button>
+      </div>
     </div>
   </header>
 
@@ -155,15 +168,59 @@
   </div>
 
   <script>
-    // Carregar tarefas do armazenamento local
-    let tasks = JSON.parse(localStorage.getItem('rotinas_tasks')) || [];
+    // Carregamento seguro com tratamento de erro
+    let tasks = [];
+    try {
+      const stored = localStorage.getItem('rotinas_tasks');
+      if (stored) {
+        tasks = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error("Erro ao carregar dados locais:", e);
+      tasks = [];
+    }
 
-    // Renderizar ao carregar a página
     render();
 
     function saveTasksToStorage() {
-      localStorage.setItem('rotinas_tasks', JSON.stringify(tasks));
+      try {
+        localStorage.setItem('rotinas_tasks', JSON.stringify(tasks));
+      } catch (e) {
+        alert("Erro ao gravar dados no armazenamento local.");
+      }
       render();
+    }
+
+    // Funções de Backup e Restauro
+    function exportData() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(tasks, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `backup_rotinas_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function importData(event) {
+      const fileReader = new FileReader();
+      if (event.target.files[0]) {
+        fileReader.readAsText(event.target.files[0], "UTF-8");
+        fileReader.onload = function(e) {
+          try {
+            const imported = JSON.parse(e.target.result);
+            if (Array.isArray(imported)) {
+              tasks = imported;
+              saveTasksToStorage();
+              alert("Backup importado com sucesso!");
+            } else {
+              alert("Formato de ficheiro inválido.");
+            }
+          } catch (error) {
+            alert("Erro ao ler o ficheiro JSON.");
+          }
+        }
+      }
     }
 
     function openModal(id = null) {
@@ -172,13 +229,15 @@
 
       if (id) {
         const task = tasks.find(t => t.id === id);
-        document.getElementById('taskId').value = task.id;
-        document.getElementById('taskTitle').value = task.title;
-        document.getElementById('taskPriority').value = task.priority;
-        document.getElementById('taskDueDate').value = task.dueDate;
-        document.getElementById('taskStatus').value = task.status;
-        document.getElementById('taskReason').value = task.reason || '';
-        document.getElementById('modalTitle').innerText = 'Editar Demanda';
+        if (task) {
+          document.getElementById('taskId').value = task.id;
+          document.getElementById('taskTitle').value = task.title;
+          document.getElementById('taskPriority').value = task.priority;
+          document.getElementById('taskDueDate').value = task.dueDate;
+          document.getElementById('taskStatus').value = task.status;
+          document.getElementById('taskReason').value = task.reason || '';
+          document.getElementById('modalTitle').innerText = 'Editar Demanda';
+        }
       } else {
         document.getElementById('taskForm').reset();
         document.getElementById('taskId').value = '';
@@ -203,20 +262,13 @@
 
       if (id) {
         const task = tasks.find(t => t.id === id);
-        let stoppedMinutes = task.stoppedMinutes || 0;
-        let pausedAt = task.pausedAt || null;
-
-        if (task.status !== 'Pausado' && status === 'Pausado') {
-          pausedAt = now;
-        } else if (task.status === 'Pausado' && status !== 'Pausado' && task.paused_at) {
-          // Mantém cálculo seguro
+        if (task) {
+          task.title = title;
+          task.priority = priority;
+          task.dueDate = dueDate;
+          task.status = status;
+          task.reason = reason;
         }
-
-        task.title = title;
-        task.priority = priority;
-        task.dueDate = dueDate;
-        task.status = status;
-        task.reason = reason;
       } else {
         const newTask = {
           id: Date.now().toString(),
@@ -247,7 +299,8 @@
       const today = new Date().toISOString().split('T')[0];
 
       ['fazer-agora', 'agendar', 'delegar', 'eliminar'].forEach(q => {
-        document.getElementById(`quad-${q}`).innerHTML = '';
+        const el = document.getElementById(`quad-${q}`);
+        if (el) el.innerHTML = '';
       });
 
       let totalAtivas = 0;
